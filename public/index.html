@@ -1152,6 +1152,68 @@ canvas { display: block; width: 100% !important; }
   font-weight: 600;
   border: 1px solid;
 }
+
+/* ═══ PROFILE BADGE & SHEET ═══ */
+.profile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--b2);
+  border-radius: 999px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t1);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+  margin-right: 6px;
+}
+.profile-badge:hover { background: var(--bg4); border-color: var(--b3); }
+.profile-badge:active { transform: scale(.97); }
+.profile-badge .pb-emoji { font-size: 13px; line-height: 1; }
+.profile-badge .pb-name { white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.profile-badge .pb-mode {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.profile-badge.sidebar-profile {
+  margin: 12px;
+  width: calc(100% - 24px);
+  justify-content: flex-start;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+/* Profile sheet — cards */
+.prof-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg2);
+  border: 1px solid var(--b2);
+  border-radius: var(--r);
+  cursor: pointer;
+  font-family: var(--font);
+  color: var(--t1);
+  text-align: left;
+  transition: border-color .15s ease, background .15s ease;
+}
+.prof-card:hover { background: var(--bg3); border-color: var(--b3); }
+.prof-card.active { border-color: var(--green); background: rgba(0,229,160,.05); }
+.prof-card .prof-emoji { font-size: 28px; flex-shrink: 0; }
+.prof-card .prof-info { flex: 1; min-width: 0; }
+.prof-card .prof-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.prof-card .prof-tag { font-size: 9px; padding: 2px 7px; border-radius: 999px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; }
+.prof-card .prof-stats { font-size: 11px; color: var(--t3); margin-top: 3px; }
+.prof-card .prof-start { font-size: 10px; color: var(--t4); margin-top: 3px; font-style: italic; }
+.prof-card .prof-check { font-size: 22px; color: var(--green); font-weight: 800; }
 </style>
 </head>
 <body>
@@ -1181,6 +1243,19 @@ canvas { display: block; width: 100% !important; }
       <button class="more-btn" onclick="navMore('import')"><span style="font-size:22px">↑</span>Import</button>
     </div>
     <button class="sheet-close" onclick="closeOverlay('moreOverlay')">Fermer</button>
+  </div>
+</div>
+
+<!-- ═══ PROFILE OVERLAY ═══ -->
+<div class="overlay" id="profileOverlay">
+  <div class="sheet" id="profileSheet">
+    <div class="sheet-handle"></div>
+    <div style="font-size:9px;font-weight:700;color:var(--t4);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px">Profil actif</div>
+    <div id="profileList" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div style="margin-top:18px;padding:12px;background:var(--bg2);border-radius:var(--r);font-size:11px;color:var(--t3);line-height:1.5">
+      <strong style="color:var(--t2)">💡 À savoir :</strong> chaque profil garde ses propres trades, sessions et stats. L'historique <em>Démo</em> reste accessible quand tu passes en <em>Live</em>.
+    </div>
+    <button class="sheet-close" onclick="closeOverlay('profileOverlay')">Fermer</button>
   </div>
 </div>
 
@@ -1230,6 +1305,7 @@ canvas { display: block; width: 100% !important; }
         <div class="sw-value" id="swGoalsVal" style="color:var(--t4)">—</div>
         <div class="progress-bar"><div class="progress-fill" id="swGoalsBar" style="background:var(--blue);width:0%"></div></div>
       </div>
+      <button class="profile-badge sidebar-profile" onclick="openProfileSheet()" aria-label="Changer de profil"></button>
     </div>
   </div>
 
@@ -1241,6 +1317,7 @@ canvas { display: block; width: 100% !important; }
       <div class="topbar-logo-mark">E</div>
       <div class="topbar-title">EDGE</div>
       <div class="topbar-date" id="topDate"></div>
+      <button class="profile-badge" onclick="openProfileSheet()" aria-label="Changer de profil"></button>
       <button class="topbar-btn" onclick="navMore('import')">↑ Import</button>
     </div>
 
@@ -1716,44 +1793,144 @@ canvas { display: block; width: 100% !important; }
 // API
 const API = window.location.hostname === 'localhost' ? 'http://localhost:3000/api/claude' : '/api/claude';
 
+// ═══ PROFILS ═══
+// Architecture: chaque profil a son propre namespace localStorage
+// "edge_<profileId>_<key>" — ex: edge_seb_demo_trades, edge_seb_live_trades, edge_bro_trades
+const PROFILES = {
+  seb_demo: { name: 'Sébastien', mode: 'demo', emoji: '📊', label: 'Démo', color: 'var(--orange)' },
+  seb_live: { name: 'Sébastien', mode: 'live', emoji: '🚀', label: 'Live', color: 'var(--green)', startDate: '04/06/2026' },
+  bro:      { name: 'Frère',     mode: 'demo', emoji: '👤', label: 'Démo', color: 'var(--blue)' }
+};
+let currentProfile = localStorage.getItem('edge_active_profile') || 'seb_demo';
+if(!PROFILES[currentProfile]) currentProfile = 'seb_demo';
+
+function profileKey(k){ return 'edge_' + currentProfile + '_' + k; }
+
+// Migration unique : si l'ancienne clé "edge_trades" existe (ancien storage non-profilé),
+// la copier vers le profil seb_demo puis la supprimer.
+(function migrateOldStorage(){
+  try{
+    const old = localStorage.getItem('edge_trades');
+    if(old && !localStorage.getItem('edge_seb_demo_trades')){
+      localStorage.setItem('edge_seb_demo_trades', old);
+      localStorage.removeItem('edge_trades');
+      console.log('Migration: trades → seb_demo');
+    }
+    // Migration aussi pour les ps_* (pre-sessions)
+    for(let i=localStorage.length-1; i>=0; i--){
+      const k=localStorage.key(i);
+      if(k && k.startsWith('edge_ps_')){
+        const v=localStorage.getItem(k);
+        const newKey='edge_seb_demo_'+k.substring(5); // edge_ps_x → edge_seb_demo_ps_x
+        if(!localStorage.getItem(newKey)){
+          localStorage.setItem(newKey, v);
+          localStorage.removeItem(k);
+        }
+      }
+    }
+  }catch(e){console.warn('migration:',e.message);}
+})();
 
 // ═══ STORAGE ═══
 const MEM = {};
 const DB = {
   async get(k){
-    try{ const v=localStorage.getItem('edge_'+k); if(v){const p=JSON.parse(v);MEM[k]=p;return p;} }catch(e){}
-    return MEM[k]||null;
+    try{ const v=localStorage.getItem(profileKey(k)); if(v){const p=JSON.parse(v);MEM[currentProfile+'_'+k]=p;return p;} }catch(e){}
+    return MEM[currentProfile+'_'+k]||null;
   },
   async set(k,val){
-    MEM[k]=val;
+    MEM[currentProfile+'_'+k]=val;
     try{
       let s=JSON.stringify(val);
       if(s.length>3800000){
         const t=Array.isArray(val)?val.map(t=>({...t,notes:(t.notes||'').substring(0,150),news:(t.news||'').substring(0,80)})):val;
         s=JSON.stringify(t);
       }
-      localStorage.setItem('edge_'+k,s);
+      localStorage.setItem(profileKey(k),s);
     }catch(e){console.warn('storage:',e.message);}
     return true;
   },
-  async del(k){ delete MEM[k]; try{localStorage.removeItem('edge_'+k);}catch(e){} return true; }
+  async del(k){ delete MEM[currentProfile+'_'+k]; try{localStorage.removeItem(profileKey(k));}catch(e){} return true; },
+  // Accès cross-profil (pour l'IA qui veut analyser démo + live de Seb)
+  async getProfile(profileId, k){
+    try{ const v=localStorage.getItem('edge_'+profileId+'_'+k); return v?JSON.parse(v):null; }catch(e){ return null; }
+  }
 };
+
+// ═══ SWITCH PROFIL ═══
+async function switchProfile(newProfile){
+  if(!PROFILES[newProfile] || newProfile===currentProfile) return;
+  currentProfile = newProfile;
+  localStorage.setItem('edge_active_profile', newProfile);
+  // Reset state
+  TRADES = [];
+  // Recharger pour ce profil
+  const saved = await DB.get('trades');
+  if(saved && saved.length){ TRADES = saved; }
+  // Rebuild full UI
+  updateProfileBadge();
+  buildAll();
+  // Vider les zones d'affichage si pas de trades
+  if(!TRADES.length){
+    const heroPnl=document.getElementById('heroPnl'); if(heroPnl){heroPnl.textContent='—';heroPnl.style.color='var(--t3)';}
+    const heroSub=document.getElementById('heroSub'); if(heroSub) heroSub.textContent='Aucun trade pour ce profil';
+    ['hCumul','hEV','hDD'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent='—';});
+    const sessList=document.getElementById('sessList'); if(sessList) sessList.innerHTML='';
+    const tradeList=document.getElementById('tradeList'); if(tradeList) tradeList.innerHTML='<div style="text-align:center;color:var(--t3);padding:40px 20px">Aucun trade pour ce profil</div>';
+  }
+  closeOverlay('profileOverlay');
+  showToast('✓ Profil : '+PROFILES[newProfile].name+' '+PROFILES[newProfile].label);
+}
+
+function updateProfileBadge(){
+  const p = PROFILES[currentProfile];
+  document.querySelectorAll('.profile-badge').forEach(badge=>{
+    badge.innerHTML = '<span class="pb-emoji">'+p.emoji+'</span><span class="pb-name">'+p.name+'</span><span class="pb-mode" style="background:'+p.color+';color:#07070f">'+p.label+'</span>';
+  });
+}
+
+function openProfileSheet(){
+  const overlay = document.getElementById('profileOverlay');
+  if(!overlay) return;
+  const list = document.getElementById('profileList');
+  list.innerHTML = '';
+  Object.entries(PROFILES).forEach(([id,p])=>{
+    const isActive = id===currentProfile;
+    // Compter trades du profil
+    let tradeCount = 0;
+    try{ const v=localStorage.getItem('edge_'+id+'_trades'); if(v){tradeCount=JSON.parse(v).length;} }catch(e){}
+    const startInfo = p.startDate ? '<div class="prof-start">Démarrage : '+p.startDate+'</div>' : '';
+    list.innerHTML += '<button class="prof-card'+(isActive?' active':'')+'" onclick="switchProfile(\''+id+'\')">'
+      + '<div class="prof-emoji">'+p.emoji+'</div>'
+      + '<div class="prof-info">'
+      +   '<div class="prof-name">'+p.name+' <span class="prof-tag" style="background:'+p.color+';color:#07070f">'+p.label+'</span></div>'
+      +   '<div class="prof-stats">'+tradeCount+' trades · '+(isActive?'Actif':'Cliquer pour activer')+'</div>'
+      +   startInfo
+      + '</div>'
+      + (isActive?'<div class="prof-check">✓</div>':'')
+      + '</button>';
+  });
+  overlay.classList.add('open');
+}
 
 // ═══ STATE ═══
 let TRADES=[], pendingCSV=null, pendingNotes=null, pendingTZFills=[], chartsBuilt=false;
+window.pendingTZTrades = [];
 let aiMode='daily', mental=0, hasSetup=null, isSlowDay=null;
 
 // ═══ INIT ═══
 async function init(){
   document.getElementById('topDate').textContent=new Date().toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'short'}).toUpperCase();
+  updateProfileBadge();
   const saved=await DB.get('trades');
   if(saved&&saved.length){ TRADES=saved; buildAll(); }
   buildPlaybook();
   // Notes live preview
-  document.getElementById('notesTA').addEventListener('input',function(){
+  const notesTA=document.getElementById('notesTA');
+  if(notesTA) notesTA.addEventListener('input',function(){
     pendingNotes=parseNotes(this.value);
     const p=document.getElementById('notesPrev');
-    if(pendingNotes.length){
+    if(pendingNotes.length && p){
       p.innerHTML=pendingNotes.map(n=>'<div style="padding:2px 0;border-bottom:1px solid var(--border)"><span style="color:var(--blue)">'+n.ticker+'</span> <span style="color:var(--l4)">'+n.date+'</span>'+(n.score?' <span style="color:var(--orange)">'+n.score+'</span>':'')+'</div>').join('');
       p.classList.add('show');
     }
@@ -1772,10 +1949,19 @@ function buildAll(){
 function switchTab(id,btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  const page=document.getElementById('page-'+id);
+  if(page)page.classList.add('active');
   if(btn)btn.classList.add('active');
-  document.querySelector('.content').scrollTo(0,0);
+  const c=document.querySelector('.content');if(c)c.scrollTo(0,0);
+  // Rebuilds pour pages spécifiques
+  if(id==='setups') buildSetups();
+  if(id==='psycho') buildPsycho();
+  if(id==='import') buildDataSum();
+  if(id==='prog') buildTrifecta();
 }
+// Alias pour les boutons de la sidebar desktop
+function switchPage(id,btn){ switchTab(id,btn); }
 function navMore(id){
   closeOverlay('moreOverlay');
   const pageMap={'setups':'setups','psycho':'psycho','prog':'prog','import':'import'};
@@ -3664,24 +3850,25 @@ function parseTZCSV(lines) {
   return trades;
 }
 
-async function importReconstructedTrades() {
-  if (!pendingTZTrades.length) return;
-  const btn = event.target; btn.disabled = true; btn.textContent = '⏳ Import...';
-  const log = document.getElementById('tzLog'); log.style.display = 'block'; log.innerHTML = '';
-  const res = mergeTrades(TRADES, pendingTZTrades, { sessions: [], trades: [] });
+async function importReconstructedTrades(evt) {
+  if (!window.pendingTZTrades || !window.pendingTZTrades.length) return;
+  const btn = (evt && evt.target) || document.querySelector('#tzImportBtn') || document.activeElement;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Import...'; }
+  const log = document.getElementById('tzLog'); if(log){log.style.display = 'block'; log.innerHTML = '';}
+  const res = mergeTrades(TRADES, window.pendingTZTrades, { sessions: [], trades: [] });
   TRADES = res.merged.sort((a, b) => {
     const da = a.date.split('/').reverse().join('-'), db = b.date.split('/').reverse().join('-');
     return db.localeCompare(da) || b.time.localeCompare(a.time);
   });
-  res.log.forEach(l => { log.innerHTML += '<span style="color:' + (l.type === 'ok' ? 'var(--green)' : l.type === 'warn' ? 'var(--orange)' : 'var(--red)') + '">' + l.msg + '</span>\n'; });
-  await dbSet('trades', TRADES);
-  log.innerHTML += '<span style="color:var(--green)">✓ Sauvegardé</span>\n';
-  pendingTZTrades = [];
-  document.getElementById('tzPreview').style.display = 'none';
-  document.getElementById('tzActionsWrap').style.display = 'none';
+  if(log) res.log.forEach(l => { log.innerHTML += '<span style="color:' + (l.type === 'ok' ? 'var(--green)' : l.type === 'warn' ? 'var(--orange)' : 'var(--red)') + '">' + l.msg + '</span>\n'; });
+  await DB.set('trades', TRADES);
+  if(log) log.innerHTML += '<span style="color:var(--green)">✓ Sauvegardé</span>\n';
+  window.pendingTZTrades = [];
+  const tzp=document.getElementById('tzPreview'); if(tzp) tzp.style.display = 'none';
+  const tza=document.getElementById('tzActionsWrap'); if(tza) tza.style.display = 'none';
   buildAll();
   showToast('✓ ' + TRADES.length + ' trades dans EDGE');
-  btn.disabled = false; btn.innerHTML = '<span>↑</span>Importer les Trades Reconstruits';
+  if (btn) { btn.disabled = false; btn.innerHTML = '<span>↑</span>Importer les Trades Reconstruits'; }
 }
 
 </script>
